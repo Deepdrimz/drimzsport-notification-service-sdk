@@ -1,0 +1,162 @@
+name: Maven CI/CD
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  pull_request:
+    branches:
+      - main
+      - master
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          cache: 'maven'
+
+      - name: Build with Maven
+        run: mvn -B clean compile -DskipTests
+
+      - name: Run tests
+        run: mvn -B test
+
+      - name: Package
+        run: mvn -B package -DskipTests
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-artifacts
+          path: |
+            target/*.jar
+            !target/*sources.jar
+            !target/*javadoc.jar
+
+  generate-docs:
+    runs-on: ubuntu-latest
+    needs: build
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+
+      - name: Install Maven
+        run: sudo apt-get update && sudo apt-get install -y maven
+
+      - name: Generate Javadocs
+        run: mvn javadoc:javadoc
+
+      - name: Upload Javadocs
+        uses: actions/upload-artifact@v4
+        with:
+          name: javadocs
+          path: target/site/apidocs/
+
+  deploy-docs:
+    runs-on: ubuntu-latest
+    needs: generate-docs
+
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure Git
+        run: |
+          git config --global user.name "GitHub Actions"
+          git config --global user.email "actions@github.com"
+
+      - name: Setup gh-pages branch
+        run: |
+          # Check if the gh-pages branch exists
+          if git ls-remote --exit-code --heads origin gh-pages; then
+            # If the branch exists, create a new orphan branch temporarily
+            git checkout --orphan temp-gh-pages
+            git rm -rf .
+          else
+            # If the branch does not exist, create it as an orphan branch
+            git checkout --orphan gh-pages
+            git rm -rf .
+          fi
+
+      - name: Download Javadocs
+        uses: actions/download-artifact@v4
+        with:
+          name: javadocs
+          path: .
+
+      - name: Commit and push to gh-pages
+        run: |
+          git add .
+          git commit -m "Deploy Javadocs for ${{ github.sha }}" || echo "No changes to commit"
+
+          if git ls-remote --exit-code --heads origin gh-pages; then
+            git push --force origin HEAD:gh-pages
+          else
+            git push origin HEAD:gh-pages
+          fi
+
+  deploy-package:
+    runs-on: ubuntu-latest
+    needs: build
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          cache: 'maven'
+
+      - name: Configure Maven for GitHub Packages
+        run: |
+          # Create settings.xml with repository URL
+          cat > ~/.m2/settings.xml << EOF
+          <settings>
+            <servers>
+              <server>
+                <id>github</id>
+                <username>${{ github.actor }}</username>
+                <password>${{ secrets.GITHUB_TOKEN }}</password>
+              </server>
+            </servers>
+          </settings>
+          EOF
+
+      - name: Update distribution URL in pom.xml (optional)
+        run: |
+          # If you want to dynamically set the repository URL, you can use sed
+          # But it's better to hardcode it in pom.xml for simplicity
+          echo "Using repository URL from pom.xml"
+
+      - name: Publish to GitHub Packages
+        run: mvn -B deploy -DskipTests
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
