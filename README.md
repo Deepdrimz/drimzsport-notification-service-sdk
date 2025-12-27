@@ -436,10 +436,6 @@ try {
         }
 ```
 
-## 📝 Examples Repository
-
-Complete working examples: [notification-sdk-examples](https://github.com/deepdrimz/notification-sdk-examples)
-
 ## 🤝 Support
 
 - **Documentation**: [https://docs.drimzsport.com/notification-sdk](https://docs.drimzsport.com/notification-sdk)
