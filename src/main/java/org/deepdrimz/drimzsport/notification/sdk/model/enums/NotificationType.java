@@ -54,6 +54,9 @@ public enum NotificationType {
     /** Promotional notification delivered via push */
     PUSH_PROMOTIONAL,
 
+    /** Generic push notification */
+    PUSH_NOTIFICATION,
+
 
     /* ===================== SPORTS & BETTING ===================== */
 
