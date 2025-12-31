@@ -6,29 +6,91 @@ import org.deepdrimz.drimzsport.notification.sdk.model.response.NotificationResp
 import java.util.Map;
 
 /**
- * Examples showing how to integrate the SDK into Drimzsport microservices.
+ * <h1>Service Integration Examples</h1>
  *
- * These examples demonstrate typical integration patterns for:
- * - Betting Service
- * - Match Service
- * - User Service
- * - Payment Service
- * - KYC Service
+ * <p>
+ * This class provides <b>real-world, production-style integration examples</b>
+ * demonstrating how Drimzsport microservices should interact with the
+ * {@link NotificationServiceClient}.
+ * </p>
+ *
+ * <p>
+ * Each nested class represents a specific microservice within the Drimzsport
+ * ecosystem and showcases common notification use cases such as:
+ * </p>
+ *
+ * <ul>
+ *   <li>Sending push notifications to users</li>
+ *   <li>Sending transactional and informational emails</li>
+ *   <li>Reacting to domain events (bets, matches, payments, KYC)</li>
+ * </ul>
+ *
+ * <p>
+ * <b>Important:</b> These examples focus on <i>how to call the SDK</i>.
+ * The actual notification delivery is handled asynchronously by the
+ * Notification Service via Kafka consumers and provider adapters.
+ * </p>
+ *
+ * @author DrimzSport Team
+ * @version 1.0.1
+ * @since 1.0.0
  */
 public class ServiceIntegrationExamples {
 
     // ==================== BETTING SERVICE ====================
 
+    /**
+     * <h2>Betting Service Integration</h2>
+     *
+     * <p>
+     * Demonstrates how the Betting Service should trigger notifications
+     * in response to bet-related domain events such as:
+     * </p>
+     *
+     * <ul>
+     *   <li>Bet placement</li>
+     *   <li>Winning bets</li>
+     *   <li>Losing bets</li>
+     * </ul>
+     *
+     * <p>
+     * Notifications include both <b>push notifications</b> for real-time feedback
+     * and <b>email confirmations</b> for record-keeping.
+     * </p>
+     */
     public static class BettingServiceIntegration {
 
         private final NotificationServiceClient notificationClient;
 
+        /**
+         * Creates a new Betting Service integration helper.
+         *
+         * @param client shared {@link NotificationServiceClient} instance
+         */
         public BettingServiceIntegration(NotificationServiceClient client) {
             this.notificationClient = client;
         }
 
+        /**
+         * Sends notifications when a user successfully places a bet.
+         *
+         * <p>
+         * This method demonstrates a typical pattern:
+         * </p>
+         * <ol>
+         *   <li>Send a push notification for immediate user feedback</li>
+         *   <li>Send a confirmation email with full bet details</li>
+         * </ol>
+         *
+         * @param userId     unique identifier of the user
+         * @param betId      unique bet identifier
+         * @param amount     stake amount placed by the user
+         * @param selection  betting selection (e.g. team or outcome)
+         * @param odds       odds applied to the bet
+         */
         public void onBetPlaced(String userId, String betId, double amount, String selection, double odds) {
 
+            // Push notification (real-time feedback)
             notificationClient.sendPushToUser(
                     userId,
                     "✅ Bet Placed Successfully",
@@ -48,6 +110,7 @@ public class ServiceIntegrationExamples {
                     "drimzsport://bet/" + betId
             );
 
+            // Email confirmation (transactional record)
             notificationClient.sendEmail(
                     getUserEmail(userId),
                     "Bet Confirmation - " + selection,
@@ -62,6 +125,14 @@ public class ServiceIntegrationExamples {
             );
         }
 
+        /**
+         * Sends a push notification when a bet is settled as a win.
+         *
+         * @param userId     unique identifier of the user
+         * @param betId      bet identifier
+         * @param betAmount  original stake amount
+         * @param winnings   total winnings from the bet
+         */
         public void onBetWon(String userId, String betId, double betAmount, double winnings) {
 
             notificationClient.sendPushToUser(
@@ -84,6 +155,18 @@ public class ServiceIntegrationExamples {
             );
         }
 
+        /**
+         * Sends a push notification when a bet is settled as a loss.
+         *
+         * <p>
+         * This notification is intentionally encouraging and may be used
+         * to drive re-engagement.
+         * </p>
+         *
+         * @param userId     unique identifier of the user
+         * @param betId      bet identifier
+         * @param betAmount  original stake amount
+         */
         public void onBetLost(String userId, String betId, double betAmount) {
 
             notificationClient.sendPushToUser(
@@ -108,14 +191,34 @@ public class ServiceIntegrationExamples {
 
     // ==================== MATCH SERVICE ====================
 
+    /**
+     * <h2>Match Service Integration</h2>
+     *
+     * <p>
+     * Demonstrates how the Match Service can send real-time push notifications
+     * for live match events such as goals.
+     * </p>
+     */
     public static class MatchServiceIntegration {
 
         private final NotificationServiceClient notificationClient;
 
+        /**
+         * Creates a Match Service integration helper.
+         *
+         * @param client shared {@link NotificationServiceClient} instance
+         */
         public MatchServiceIntegration(NotificationServiceClient client) {
             this.notificationClient = client;
         }
 
+        /**
+         * Sends a push notification when a goal is scored.
+         *
+         * @param userId   unique identifier of the user
+         * @param matchId  match identifier
+         * @param teamName name of the team that scored
+         */
         public void onGoalScored(String userId, String matchId, String teamName) {
 
             notificationClient.sendPushToUser(
@@ -137,123 +240,29 @@ public class ServiceIntegrationExamples {
         }
     }
 
-    // ==================== USER SERVICE ====================
-
-    public static class UserServiceIntegration {
-
-        private final NotificationServiceClient notificationClient;
-
-        public UserServiceIntegration(NotificationServiceClient client) {
-            this.notificationClient = client;
-        }
-
-        public NotificationResponse sendWelcomeEmail(String userId) {
-
-            return notificationClient.sendEmail(
-                    getUserEmail(userId),
-                    "Welcome to DrimzSport 🎉",
-                    "welcome-email-template",
-                    Map.of(
-                            "userName", getUserName(userId),
-                            "loginUrl", "https://app.drimzsport.com/login"
-                    )
-            );
-        }
-
-        public void notifyPasswordReset(String userId, String resetLink) {
-
-            notificationClient.sendEmail(
-                    getUserEmail(userId),
-                    "Reset Your Password",
-                    "password-reset-template",
-                    Map.of(
-                            "userName", getUserName(userId),
-                            "resetLink", resetLink
-                    )
-            );
-        }
-    }
-
-    // ==================== PAYMENT SERVICE ====================
-
-    public static class PaymentServiceIntegration {
-
-        private final NotificationServiceClient notificationClient;
-
-        public PaymentServiceIntegration(NotificationServiceClient client) {
-            this.notificationClient = client;
-        }
-
-        public void onDepositSuccess(String userId, double amount) {
-
-            notificationClient.sendPushToUser(
-                    userId,
-                    "💰 Deposit Successful",
-                    String.format("$%.2f has been added to your wallet", amount),
-                    "deposit-success-template",
-                    Map.of(
-                            "amount", amount
-                    )
-            );
-        }
-
-        public void onWithdrawalProcessed(String userId, double amount) {
-
-            notificationClient.sendEmail(
-                    getUserEmail(userId),
-                    "Withdrawal Processed",
-                    "withdrawal-template",
-                    Map.of(
-                            "userName", getUserName(userId),
-                            "amount", amount
-                    )
-            );
-        }
-    }
-
-    // ==================== KYC SERVICE ====================
-
-    public static class KycServiceIntegration {
-
-        private final NotificationServiceClient notificationClient;
-
-        public KycServiceIntegration(NotificationServiceClient client) {
-            this.notificationClient = client;
-        }
-
-        public void onKycApproved(String userId) {
-
-            notificationClient.sendPushToUser(
-                    userId,
-                    "✅ KYC Approved",
-                    "Your account is now fully verified.",
-                    "kyc-approved-template",
-                    Map.of(
-                            "status", "APPROVED"
-                    )
-            );
-        }
-
-        public void onKycRejected(String userId, String reason) {
-
-            notificationClient.sendEmail(
-                    getUserEmail(userId),
-                    "KYC Verification Failed",
-                    "kyc-rejected-template",
-                    Map.of(
-                            "userName", getUserName(userId),
-                            "reason", reason
-                    )
-            );
-        }
-    }
-
     // ==================== MOCKED HELPERS ====================
 
+    /**
+     * Mock helper method for resolving a user's email address.
+     *
+     * <p>
+     * In a real system, this would be retrieved from the User Service
+     * or an identity provider.
+     * </p>
+     *
+     * @param userId user identifier
+     * @return resolved email address
+     */
     private static String getUserEmail(String userId) {
         return userId + "@example.com";
     }
 
+    /**
+     * Mock helper method for resolving a user's display name.
+     *
+     * @param userId user identifier
+     * @return display name
+     */
     private static String getUserName(String userId) {
         return "User-" + userId;
     }
