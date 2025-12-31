@@ -3,7 +3,7 @@
   <modelVersion>4.0.0</modelVersion>
   <groupId>org.deepdrimz</groupId>
   <artifactId>drimzsport-notification-service-sdk</artifactId>
-  <version>1.0.0</version>
+  <version>1.0.1</version>
   <name>drimzsport-notification-service-sdk</name>
   <packaging>jar</packaging>
   <description>Java client library for DrimzSport Notification Service</description>

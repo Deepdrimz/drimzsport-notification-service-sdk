@@ -5,9 +5,12 @@ import org.deepdrimz.drimzsport.notification.sdk.exception.*;
 import org.deepdrimz.drimzsport.notification.sdk.model.enums.NotificationChannel;
 import org.deepdrimz.drimzsport.notification.sdk.model.enums.NotificationPriority;
 import org.deepdrimz.drimzsport.notification.sdk.model.enums.NotificationType;
+import org.deepdrimz.drimzsport.notification.sdk.model.enums.PlatformType;
 import org.deepdrimz.drimzsport.notification.sdk.model.request.BulkNotificationRequest;
+import org.deepdrimz.drimzsport.notification.sdk.model.request.RegisterDeviceTokenRequest;
 import org.deepdrimz.drimzsport.notification.sdk.model.request.SendNotificationRequest;
 import org.deepdrimz.drimzsport.notification.sdk.model.response.BulkNotificationResponse;
+import org.deepdrimz.drimzsport.notification.sdk.model.response.DeviceTokenResponse;
 import org.deepdrimz.drimzsport.notification.sdk.model.response.NotificationResponse;
 import org.deepdrimz.drimzsport.notification.sdk.validator.NotificationRequestValidator;
 import org.springframework.http.HttpStatus;
@@ -25,6 +28,7 @@ import java.time.Duration;
  * <ul>
  *   <li>Send single notifications (Email, SMS, Push)</li>
  *   <li>Send bulk notifications</li>
+ *   <li>Device token management for push notifications</li>
  *   <li>Check notification status</li>
  * </ul>
  *
@@ -36,17 +40,26 @@ import java.time.Duration;
  *     .apiKey("your-api-key")
  *     .build();
  *
- * // Send email
- * NotificationResponse response = client.sendEmail(
- *     "user@example.com",
- *     "Welcome to DrimzSport!",
- *     "welcome-template",
- *     Map.of("userName", "John")
+ * // Register device for push notifications
+ * DeviceTokenResponse device = client.registerDevice(
+ *     "user-123",
+ *     "fcm-token-xyz",
+ *     PlatformType.ANDROID,
+ *     "device-001"
+ * );
+ *
+ * // Send push notification to user
+ * NotificationResponse response = client.sendPushToUser(
+ *     "user-123",
+ *     "Match Alert",
+ *     "Real Madrid scored!",
+ *     "match-alert-template",
+ *     Map.of("team", "Real Madrid")
  * );
  * }</pre>
  *
  * @author DrimzSport Team
- * @version 1.0.0
+ * @version 1.1.0
  * @since 1.0.0
  */
 @Slf4j
@@ -65,6 +78,104 @@ public class NotificationServiceClient {
 
     public static NotificationServiceClientBuilder builder() {
         return new NotificationServiceClientBuilder();
+    }
+
+    // ==================== DEVICE TOKEN MANAGEMENT ====================
+
+    /**
+     * Registers a device token for push notifications.
+     *
+     * @param userId user identifier
+     * @param token device token from FCM or APNS
+     * @param platform platform type (ANDROID, IOS, WEB)
+     * @param deviceId unique device identifier
+     * @return device token response with registration details
+     */
+    public DeviceTokenResponse registerDevice(String userId, String token,
+                                              PlatformType platform, String deviceId) {
+        return registerDevice(userId, token, platform, deviceId, null);
+    }
+
+    /**
+     * Registers a device token for push notifications with app version.
+     *
+     * @param userId user identifier
+     * @param token device token from FCM or APNS
+     * @param platform platform type (ANDROID, IOS, WEB)
+     * @param deviceId unique device identifier
+     * @param appVersion application version (optional)
+     * @return device token response with registration details
+     */
+    public DeviceTokenResponse registerDevice(String userId, String token,
+                                              PlatformType platform, String deviceId,
+                                              String appVersion) {
+        log.debug("Registering device token: userId={}, platform={}, deviceId={}",
+                userId, platform, deviceId);
+
+        RegisterDeviceTokenRequest request = RegisterDeviceTokenRequest.builder()
+                .userId(userId)
+                .token(token)
+                .platform(platform)
+                .deviceId(deviceId)
+                .appVersion(appVersion)
+                .build();
+
+        return webClient.post()
+                .uri("/api/v1/devices/register")
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue(request)
+                .retrieve()
+                .bodyToMono(DeviceTokenResponse.class)
+                .retryWhen(createRetrySpec())
+                .onErrorMap(this::mapException)
+                .doOnSuccess(response -> log.debug("Device registered: id={}", response.getId()))
+                .block();
+    }
+
+    /**
+     * Unregisters a device token.
+     *
+     * @param userId user identifier
+     * @param deviceId device identifier to unregister
+     */
+    public void unregisterDevice(String userId, String deviceId) {
+        log.debug("Unregistering device: userId={}, deviceId={}", userId, deviceId);
+
+        webClient.delete()
+                .uri(uriBuilder -> uriBuilder
+                        .path("/api/v1/devices/{deviceId}")
+                        .queryParam("userId", userId)
+                        .build(deviceId))
+                .retrieve()
+                .bodyToMono(Void.class)
+                .onErrorMap(this::mapException)
+                .doOnSuccess(v -> log.debug("Device unregistered: deviceId={}", deviceId))
+                .block();
+    }
+
+    /**
+     * Refreshes a device token (when token changes).
+     *
+     * @param userId user identifier
+     * @param oldToken old device token
+     * @param newToken new device token
+     */
+    public void refreshDeviceToken(String userId, String oldToken, String newToken) {
+        log.debug("Refreshing device token: userId={}", userId);
+
+        webClient.put()
+                .uri("/api/v1/devices/refresh")
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue(java.util.Map.of(
+                        "userId", userId,
+                        "oldToken", oldToken,
+                        "newToken", newToken
+                ))
+                .retrieve()
+                .bodyToMono(Void.class)
+                .onErrorMap(this::mapException)
+                .doOnSuccess(v -> log.debug("Device token refreshed: userId={}", userId))
+                .block();
     }
 
     // ==================== SEND EMAIL ====================
@@ -155,22 +266,75 @@ public class NotificationServiceClient {
     // ==================== SEND PUSH NOTIFICATION ====================
 
     /**
-     * Sends a push notification.
+     * Sends a push notification to a user (all their registered devices).
      *
-     * @param deviceToken device token (iOS or Android)
+     * @param userId user identifier
      * @param title notification title
      * @param body notification body
      * @param templateId template identifier
      * @param variables template variables
      * @return notification response with ID and status
      */
+    public NotificationResponse sendPushToUser(String userId, String title, String body,
+                                               String templateId, java.util.Map<String, Object> variables) {
+        return sendPushToUser(userId, title, body, templateId, variables, null, null, null);
+    }
+
+    /**
+     * Sends a push notification to a user with custom data.
+     *
+     * @param userId user identifier
+     * @param title notification title
+     * @param body notification body
+     * @param templateId template identifier
+     * @param variables template variables
+     * @param imageUrl optional image URL
+     * @param data optional custom data
+     * @param clickAction optional click action
+     * @return notification response with ID and status
+     */
+    public NotificationResponse sendPushToUser(String userId, String title, String body,
+                                               String templateId, java.util.Map<String, Object> variables,
+                                               String imageUrl, java.util.Map<String, String> data,
+                                               String clickAction) {
+        SendNotificationRequest request = SendNotificationRequest.builder()
+                .type(NotificationType.PUSH_NOTIFICATION)
+                .channel(NotificationChannel.PUSH)
+                .recipient(userId) // For push, recipient is userId
+                .title(title)
+                .body(body)
+                .templateId(templateId)
+                .templateVariables(variables)
+                .imageUrl(imageUrl)
+                .data(data)
+                .clickAction(clickAction)
+                .priority(NotificationPriority.NORMAL)
+                .build();
+
+        return sendNotification(request);
+    }
+
+    /**
+     * Sends a push notification directly to a specific device token.
+     * Note: It's recommended to use sendPushToUser() instead, which handles all user devices.
+     *
+     * @param deviceToken device token
+     * @param title notification title
+     * @param body notification body
+     * @param templateId template identifier
+     * @param variables template variables
+     * @return notification response with ID and status
+     * @deprecated Use {@link #sendPushToUser(String, String, String, String, java.util.Map)} instead
+     */
+    @Deprecated(since = "1.1.0", forRemoval = false)
     public NotificationResponse sendPush(String deviceToken, String title, String body,
                                          String templateId, java.util.Map<String, Object> variables) {
         return sendPush(deviceToken, title, body, templateId, variables, null, null);
     }
 
     /**
-     * Sends a push notification with custom data.
+     * Sends a push notification directly to a specific device token with custom data.
+     * Note: It's recommended to use sendPushToUser() instead, which handles all user devices.
      *
      * @param deviceToken device token
      * @param title notification title
@@ -180,7 +344,9 @@ public class NotificationServiceClient {
      * @param imageUrl optional image URL
      * @param data optional custom data
      * @return notification response with ID and status
+     * @deprecated Use {@link #sendPushToUser(String, String, String, String, java.util.Map, String, java.util.Map, String)} instead
      */
+    @Deprecated(since = "1.1.0", forRemoval = false)
     public NotificationResponse sendPush(String deviceToken, String title, String body,
                                          String templateId, java.util.Map<String, Object> variables,
                                          String imageUrl, java.util.Map<String, String> data) {

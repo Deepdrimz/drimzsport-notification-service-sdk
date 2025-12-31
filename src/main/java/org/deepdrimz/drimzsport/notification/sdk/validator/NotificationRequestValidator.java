@@ -74,9 +74,14 @@ public class NotificationRequestValidator {
                 }
             }
             case PUSH -> {
-                if (recipient.length() < 20) {
-                    throw new ValidationException("Invalid device token");
+                // For push notifications, recipient can be either:
+                // 1. User ID (recommended) - any non-empty string
+                // 2. Device token (legacy) - must be at least 20 characters
+                if (recipient.length() < 3) {
+                    throw new ValidationException("Invalid recipient: must be user ID or device token");
                 }
+                // Note: User IDs are typically shorter than device tokens
+                // Both are accepted here for backward compatibility
             }
         }
     }
