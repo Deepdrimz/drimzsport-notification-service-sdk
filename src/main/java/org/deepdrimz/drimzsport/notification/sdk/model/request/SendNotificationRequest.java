@@ -87,6 +87,9 @@ public class SendNotificationRequest {
      */
     private String subject;
 
+    private String emailAccountId;
+    private String emailAccountName;
+
     /**
      * CC recipients for email notifications.
      */

@@ -20,16 +20,18 @@ import org.springframework.web.reactive.function.client.WebClientResponseExcepti
 import reactor.util.retry.Retry;
 
 import java.time.Duration;
+import java.util.Map;
 
 /**
- * Simplified Notification Service Client - Essential Operations Only.
+ * Notification Service Client with Multi-Email Account Support.
  *
- * <p>This client provides the core operations that typical clients need:
+ * <p>This client provides core notification operations with intelligent email routing:
  * <ul>
  *   <li>Send single notifications (Email, SMS, Push)</li>
  *   <li>Send bulk notifications</li>
  *   <li>Device token management for push notifications</li>
  *   <li>Check notification status</li>
+ *   <li>Multi-email account support (marketing, support, notifications)</li>
  * </ul>
  *
  * <h3>Quick Start:</h3>
@@ -40,26 +42,25 @@ import java.time.Duration;
  *     .apiKey("your-api-key")
  *     .build();
  *
- * // Register device for push notifications
- * DeviceTokenResponse device = client.registerDevice(
- *     "user-123",
- *     "fcm-token-xyz",
- *     PlatformType.ANDROID,
- *     "device-001"
+ * // Send marketing email (automatically uses marketing@drimzsport.com)
+ * NotificationResponse response = client.sendMarketingEmail(
+ *     "user@example.com",
+ *     "Special Offer!",
+ *     "promo-template",
+ *     Map.of("discount", "50%")
  * );
  *
- * // Send push notification to user
- * NotificationResponse response = client.sendPushToUser(
- *     "user-123",
- *     "Match Alert",
- *     "Real Madrid scored!",
- *     "match-alert-template",
- *     Map.of("team", "Real Madrid")
+ * // Send support email (automatically uses support@drimzsport.com - replyable)
+ * client.sendSupportEmail(
+ *     "user@example.com",
+ *     "Ticket Created",
+ *     "support-ticket-template",
+ *     Map.of("ticketId", "12345")
  * );
  * }</pre>
  *
  * @author DrimzSport Team
- * @version 1.1.0
+ * @version 1.2.0
  * @since 1.0.0
  */
 @Slf4j
@@ -166,7 +167,7 @@ public class NotificationServiceClient {
         webClient.put()
                 .uri("/api/v1/devices/refresh")
                 .contentType(MediaType.APPLICATION_JSON)
-                .bodyValue(java.util.Map.of(
+                .bodyValue(Map.of(
                         "userId", userId,
                         "oldToken", oldToken,
                         "newToken", newToken
@@ -178,10 +179,12 @@ public class NotificationServiceClient {
                 .block();
     }
 
-    // ==================== SEND EMAIL ====================
+    // ==================== SEND EMAIL - BASIC ====================
 
     /**
-     * Sends an email notification.
+     * Sends a basic email notification (uses default email account).
+     * For automatic routing based on email type, use specific methods like
+     * sendMarketingEmail, sendSupportEmail, etc.
      *
      * @param email recipient email address
      * @param subject email subject
@@ -190,7 +193,7 @@ public class NotificationServiceClient {
      * @return notification response with ID and status
      */
     public NotificationResponse sendEmail(String email, String subject, String templateId,
-                                          java.util.Map<String, Object> variables) {
+                                          Map<String, Object> variables) {
         return sendEmail(email, subject, templateId, variables, null);
     }
 
@@ -205,8 +208,8 @@ public class NotificationServiceClient {
      * @return notification response with ID and status
      */
     public NotificationResponse sendEmail(String email, String subject, String templateId,
-                                          java.util.Map<String, Object> variables,
-                                          String priority) {
+                                          Map<String, Object> variables,
+                                          NotificationPriority priority) {
         SendNotificationRequest request = SendNotificationRequest.builder()
                 .type(NotificationType.EMAIL_VERIFICATION)
                 .channel(NotificationChannel.EMAIL)
@@ -214,9 +217,213 @@ public class NotificationServiceClient {
                 .subject(subject)
                 .templateId(templateId)
                 .templateVariables(variables)
-                .priority(priority != null ?
-                        NotificationPriority.valueOf(priority) :
-                        NotificationPriority.NORMAL)
+                .priority(priority != null ? priority : NotificationPriority.NORMAL)
+                .build();
+
+        return sendNotification(request);
+    }
+
+    // ==================== SEND EMAIL - MULTI-ACCOUNT SUPPORT ====================
+
+    /**
+     * Sends an email using a specific email account by name.
+     *
+     * @param emailAccountName email account name (e.g., "marketing", "support", "notifications")
+     * @param recipient recipient email address
+     * @param subject email subject
+     * @param templateId template identifier
+     * @param variables template variables
+     * @return notification response with ID and status
+     */
+    public NotificationResponse sendEmailFrom(String emailAccountName, String recipient,
+                                              String subject, String templateId,
+                                              Map<String, Object> variables) {
+        SendNotificationRequest request = SendNotificationRequest.builder()
+                .type(NotificationType.EMAIL_VERIFICATION) // Generic type
+                .channel(NotificationChannel.EMAIL)
+                .recipient(recipient)
+                .subject(subject)
+                .templateId(templateId)
+                .templateVariables(variables)
+                .emailAccountName(emailAccountName) // NEW: Specify account by name
+                .priority(NotificationPriority.NORMAL)
+                .build();
+
+        return sendNotification(request);
+    }
+
+    /**
+     * Sends a marketing/promotional email.
+     * Automatically uses marketing email account (marketing@drimzsport.com - no-reply).
+     *
+     * @param recipient recipient email address
+     * @param subject email subject
+     * @param templateId template identifier
+     * @param variables template variables
+     * @return notification response with ID and status
+     */
+    public NotificationResponse sendMarketingEmail(String recipient, String subject,
+                                                   String templateId, Map<String, Object> variables) {
+        SendNotificationRequest request = SendNotificationRequest.builder()
+                .type(NotificationType.PROMOTIONAL_OFFER) // Auto-routes to marketing account
+                .channel(NotificationChannel.EMAIL)
+                .recipient(recipient)
+                .subject(subject)
+                .templateId(templateId)
+                .templateVariables(variables)
+                .priority(NotificationPriority.NORMAL)
+                .build();
+
+        return sendNotification(request);
+    }
+
+    /**
+     * Sends a customer support email.
+     * Automatically uses support email account (support@drimzsport.com - replyable).
+     *
+     * @param recipient recipient email address
+     * @param subject email subject
+     * @param templateId template identifier
+     * @param variables template variables
+     * @return notification response with ID and status
+     */
+    public NotificationResponse sendSupportEmail(String recipient, String subject,
+                                                 String templateId, Map<String, Object> variables) {
+        SendNotificationRequest request = SendNotificationRequest.builder()
+                .type(NotificationType.KYC_REVIEW_REQUIRED) // Auto-routes to support account
+                .channel(NotificationChannel.EMAIL)
+                .recipient(recipient)
+                .subject(subject)
+                .templateId(templateId)
+                .templateVariables(variables)
+                .priority(NotificationPriority.NORMAL)
+                .build();
+
+        return sendNotification(request);
+    }
+
+    /**
+     * Sends a system notification email.
+     * Automatically uses notifications email account (noreply@drimzsport.com - no-reply).
+     *
+     * @param recipient recipient email address
+     * @param subject email subject
+     * @param templateId template identifier
+     * @param variables template variables
+     * @return notification response with ID and status
+     */
+    public NotificationResponse sendNotificationEmail(String recipient, String subject,
+                                                      String templateId, Map<String, Object> variables) {
+        SendNotificationRequest request = SendNotificationRequest.builder()
+                .type(NotificationType.EMAIL_VERIFICATION) // Auto-routes to notifications account
+                .channel(NotificationChannel.EMAIL)
+                .recipient(recipient)
+                .subject(subject)
+                .templateId(templateId)
+                .templateVariables(variables)
+                .priority(NotificationPriority.NORMAL)
+                .build();
+
+        return sendNotification(request);
+    }
+
+    /**
+     * Sends a welcome email to new users.
+     * Automatically uses notifications email account (noreply@drimzsport.com - no-reply).
+     *
+     * @param recipient recipient email address
+     * @param subject email subject
+     * @param templateId template identifier
+     * @param variables template variables
+     * @return notification response with ID and status
+     */
+    public NotificationResponse sendWelcomeEmail(String recipient, String subject,
+                                                 String templateId, Map<String, Object> variables) {
+        SendNotificationRequest request = SendNotificationRequest.builder()
+                .type(NotificationType.WELCOME_EMAIL) // Auto-routes to notifications account
+                .channel(NotificationChannel.EMAIL)
+                .recipient(recipient)
+                .subject(subject)
+                .templateId(templateId)
+                .templateVariables(variables)
+                .priority(NotificationPriority.NORMAL)
+                .build();
+
+        return sendNotification(request);
+    }
+
+    /**
+     * Sends a password reset email.
+     * Automatically uses notifications email account (noreply@drimzsport.com - no-reply).
+     *
+     * @param recipient recipient email address
+     * @param subject email subject
+     * @param templateId template identifier
+     * @param variables template variables
+     * @return notification response with ID and status
+     */
+    public NotificationResponse sendPasswordResetEmail(String recipient, String subject,
+                                                       String templateId, Map<String, Object> variables) {
+        SendNotificationRequest request = SendNotificationRequest.builder()
+                .type(NotificationType.PASSWORD_RESET) // Auto-routes to notifications account
+                .channel(NotificationChannel.EMAIL)
+                .recipient(recipient)
+                .subject(subject)
+                .templateId(templateId)
+                .templateVariables(variables)
+                .priority(NotificationPriority.HIGH)
+                .build();
+
+        return sendNotification(request);
+    }
+
+    /**
+     * Sends a transaction receipt email.
+     * Automatically uses notifications email account (noreply@drimzsport.com - no-reply).
+     *
+     * @param recipient recipient email address
+     * @param subject email subject
+     * @param templateId template identifier
+     * @param variables template variables
+     * @return notification response with ID and status
+     */
+    public NotificationResponse sendTransactionReceiptEmail(String recipient, String subject,
+                                                            String templateId, Map<String, Object> variables) {
+        SendNotificationRequest request = SendNotificationRequest.builder()
+                .type(NotificationType.TRANSACTION_RECEIPT) // Auto-routes to notifications account
+                .channel(NotificationChannel.EMAIL)
+                .recipient(recipient)
+                .subject(subject)
+                .templateId(templateId)
+                .templateVariables(variables)
+                .priority(NotificationPriority.NORMAL)
+                .build();
+
+        return sendNotification(request);
+    }
+
+    /**
+     * Sends a KYC-related email to users.
+     * Automatically uses notifications email account (noreply@drimzsport.com - no-reply).
+     *
+     * @param recipient recipient email address
+     * @param subject email subject
+     * @param kycType KYC notification type (KYC_SUBMITTED, KYC_APPROVED, KYC_REJECTED, etc.)
+     * @param templateId template identifier
+     * @param variables template variables
+     * @return notification response with ID and status
+     */
+    public NotificationResponse sendKYCEmail(String recipient, String subject,
+                                             NotificationType kycType, String templateId,
+                                             Map<String, Object> variables) {
+        SendNotificationRequest request = SendNotificationRequest.builder()
+                .type(kycType) // KYC_SUBMITTED, KYC_APPROVED, KYC_REJECTED, etc.
+                .channel(NotificationChannel.EMAIL)
+                .recipient(recipient)
+                .subject(subject)
+                .templateId(templateId)
+                .templateVariables(variables)
+                .priority(NotificationPriority.NORMAL)
                 .build();
 
         return sendNotification(request);
@@ -233,7 +440,7 @@ public class NotificationServiceClient {
      * @return notification response with ID and status
      */
     public NotificationResponse sendSMS(String phoneNumber, String templateId,
-                                        java.util.Map<String, Object> variables) {
+                                        Map<String, Object> variables) {
         return sendSMS(phoneNumber, templateId, variables, null);
     }
 
@@ -247,17 +454,37 @@ public class NotificationServiceClient {
      * @return notification response with ID and status
      */
     public NotificationResponse sendSMS(String phoneNumber, String templateId,
-                                        java.util.Map<String, Object> variables,
-                                        String priority) {
+                                        Map<String, Object> variables,
+                                        NotificationPriority priority) {
         SendNotificationRequest request = SendNotificationRequest.builder()
                 .type(NotificationType.SMS_VERIFICATION)
                 .channel(NotificationChannel.SMS)
                 .recipient(phoneNumber)
                 .templateId(templateId)
                 .templateVariables(variables)
-                .priority(priority != null ?
-                        NotificationPriority.valueOf(priority) :
-                        NotificationPriority.NORMAL)
+                .priority(priority != null ? priority : NotificationPriority.NORMAL)
+                .build();
+
+        return sendNotification(request);
+    }
+
+    /**
+     * Sends an SMS verification code.
+     *
+     * @param phoneNumber recipient phone number
+     * @param templateId template identifier
+     * @param variables template variables (should include verification code)
+     * @return notification response with ID and status
+     */
+    public NotificationResponse sendSMSVerification(String phoneNumber, String templateId,
+                                                    Map<String, Object> variables) {
+        SendNotificationRequest request = SendNotificationRequest.builder()
+                .type(NotificationType.SMS_VERIFICATION)
+                .channel(NotificationChannel.SMS)
+                .recipient(phoneNumber)
+                .templateId(templateId)
+                .templateVariables(variables)
+                .priority(NotificationPriority.HIGH)
                 .build();
 
         return sendNotification(request);
@@ -276,7 +503,7 @@ public class NotificationServiceClient {
      * @return notification response with ID and status
      */
     public NotificationResponse sendPushToUser(String userId, String title, String body,
-                                               String templateId, java.util.Map<String, Object> variables) {
+                                               String templateId, Map<String, Object> variables) {
         return sendPushToUser(userId, title, body, templateId, variables, null, null, null);
     }
 
@@ -294,8 +521,8 @@ public class NotificationServiceClient {
      * @return notification response with ID and status
      */
     public NotificationResponse sendPushToUser(String userId, String title, String body,
-                                               String templateId, java.util.Map<String, Object> variables,
-                                               String imageUrl, java.util.Map<String, String> data,
+                                               String templateId, Map<String, Object> variables,
+                                               String imageUrl, Map<String, String> data,
                                                String clickAction) {
         SendNotificationRequest request = SendNotificationRequest.builder()
                 .type(NotificationType.PUSH_NOTIFICATION)
@@ -324,11 +551,11 @@ public class NotificationServiceClient {
      * @param templateId template identifier
      * @param variables template variables
      * @return notification response with ID and status
-     * @deprecated Use {@link #sendPushToUser(String, String, String, String, java.util.Map)} instead
+     * @deprecated Use {@link #sendPushToUser(String, String, String, String, Map)} instead
      */
     @Deprecated(since = "1.1.0", forRemoval = false)
     public NotificationResponse sendPush(String deviceToken, String title, String body,
-                                         String templateId, java.util.Map<String, Object> variables) {
+                                         String templateId, Map<String, Object> variables) {
         return sendPush(deviceToken, title, body, templateId, variables, null, null);
     }
 
@@ -344,12 +571,12 @@ public class NotificationServiceClient {
      * @param imageUrl optional image URL
      * @param data optional custom data
      * @return notification response with ID and status
-     * @deprecated Use {@link #sendPushToUser(String, String, String, String, java.util.Map, String, java.util.Map, String)} instead
+     * @deprecated Use {@link #sendPushToUser(String, String, String, String, Map, String, Map, String)} instead
      */
     @Deprecated(since = "1.1.0", forRemoval = false)
     public NotificationResponse sendPush(String deviceToken, String title, String body,
-                                         String templateId, java.util.Map<String, Object> variables,
-                                         String imageUrl, java.util.Map<String, String> data) {
+                                         String templateId, Map<String, Object> variables,
+                                         String imageUrl, Map<String, String> data) {
         SendNotificationRequest request = SendNotificationRequest.builder()
                 .type(NotificationType.PUSH_NOTIFICATION)
                 .channel(NotificationChannel.PUSH)
@@ -381,7 +608,7 @@ public class NotificationServiceClient {
         validator.validate(request);
 
         return webClient.post()
-                .uri("/api/v1/notifications")
+                .uri("/api/v1/notifications/send")
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue(request)
                 .retrieve()
