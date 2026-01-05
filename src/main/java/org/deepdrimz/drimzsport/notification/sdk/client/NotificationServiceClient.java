@@ -608,7 +608,7 @@ public class NotificationServiceClient {
         validator.validate(request);
 
         return webClient.post()
-                .uri("/api/v1/notifications/send")
+                .uri("/api/v1/notifications")
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue(request)
                 .retrieve()
