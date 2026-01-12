@@ -7,19 +7,27 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import org.deepdrimz.drimzsport.notification.sdk.model.enums.EmailAccountCategory;
 import org.deepdrimz.drimzsport.notification.sdk.model.enums.NotificationChannel;
 import org.deepdrimz.drimzsport.notification.sdk.model.enums.NotificationPriority;
 import org.deepdrimz.drimzsport.notification.sdk.model.enums.NotificationType;
-
 
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 
 /**
- * Request object for sending a single notification.
+ * SDK Request object for sending a single notification.
  *
  * <p>This class is immutable and thread-safe. Use the builder pattern to construct instances.</p>
+ *
+ * <p>Supports multiple notification channels:
+ * <ul>
+ *   <li>Email (with type-safe email account category)</li>
+ *   <li>Push notifications (title, body, custom data, image, click action)</li>
+ *   <li>SMS (with optional provider)</li>
+ * </ul>
+ * </p>
  *
  * <h3>Example Usage:</h3>
  * <pre>{@code
@@ -28,6 +36,7 @@ import java.util.Map;
  *     .channel(NotificationChannel.EMAIL)
  *     .recipient("user@example.com")
  *     .templateId("email-verification-template")
+ *     .emailAccount(EmailAccountCategory.MARKETING)
  *     .templateVariables(Map.of("userName", "John", "code", "123456"))
  *     .priority(NotificationPriority.HIGH)
  *     .build();
@@ -42,19 +51,19 @@ import java.util.Map;
 public class SendNotificationRequest {
 
     /**
-     * The type of notification to send.
+     * The type of notification to send (e.g., EMAIL_VERIFICATION, PASSWORD_RESET, PUSH_NOTIFICATION).
      */
     @NotNull(message = "Notification type is required")
     private NotificationType type;
 
     /**
-     * The channel through which to send the notification.
+     * The channel through which to send the notification (EMAIL, SMS, PUSH).
      */
     @NotNull(message = "Channel is required")
     private NotificationChannel channel;
 
     /**
-     * The recipient of the notification (email, phone number, or device token).
+     * The recipient of the notification (email address, phone number, or device token).
      */
     @NotBlank(message = "Recipient is required")
     private String recipient;
@@ -81,14 +90,17 @@ public class SendNotificationRequest {
     @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss")
     private LocalDateTime scheduledAt;
 
-    // Email-specific fields
+    // ==================== Email-specific fields ====================
+
     /**
      * Email subject (required for email notifications).
      */
     private String subject;
 
-    private String emailAccountId;
-    private String emailAccountName;
+    /**
+     * Type-safe email account category for sending emails (MARKETING, SUPPORT, NOTIFICATIONS).
+     */
+    private EmailAccountCategory emailAccount;
 
     /**
      * CC recipients for email notifications.
@@ -105,7 +117,8 @@ public class SendNotificationRequest {
      */
     private List<String> attachments;
 
-    // Push notification-specific fields
+    // ==================== Push notification-specific fields ====================
+
     /**
      * Title for push notifications.
      */
@@ -131,7 +144,8 @@ public class SendNotificationRequest {
      */
     private String clickAction;
 
-    // SMS-specific fields
+    // ==================== SMS-specific fields ====================
+
     /**
      * SMS provider name (optional, auto-selected if not provided).
      */

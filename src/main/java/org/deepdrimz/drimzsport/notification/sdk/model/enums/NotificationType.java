@@ -10,12 +10,17 @@ package org.deepdrimz.drimzsport.notification.sdk.model.enums;
  * </p>
  *
  * <p>
+ * Each notification type may declare an {@link EmailAccountCategory}
+ * which determines the sender identity used for email delivery.
+ * </p>
+ *
+ * <p>
  * ⚠ IMPORTANT:
  * Any change to notification types in the notification service
  * MUST be reflected here to maintain type safety and compatibility.
  * </p>
  *
- * @since 1.0.0
+ * @since 1.2.0
  */
 public enum NotificationType {
 
@@ -24,18 +29,22 @@ public enum NotificationType {
     /* ===================== ACCOUNT & AUTH ===================== */
 
     /** Email verification during registration or email change */
-    EMAIL_VERIFICATION(NotificationChannel.EMAIL, "Email Verification", "notifications"),
+    EMAIL_VERIFICATION(NotificationChannel.EMAIL, "Email Verification",
+            EmailAccountCategory.NOTIFICATIONS),
 
     /** Password reset request notification */
-    PASSWORD_RESET(NotificationChannel.EMAIL, "Password Reset", "notifications"),
+    PASSWORD_RESET(NotificationChannel.EMAIL, "Password Reset",
+            EmailAccountCategory.NOTIFICATIONS),
 
     /** Welcome email sent after successful registration */
-    WELCOME_EMAIL(NotificationChannel.EMAIL, "Welcome Email", "notifications"),
+    WELCOME_EMAIL(NotificationChannel.EMAIL, "Welcome Email",
+            EmailAccountCategory.NOTIFICATIONS),
 
     /* ===================== TRANSACTIONS ===================== */
 
     /** Transaction receipt or payment confirmation */
-    TRANSACTION_RECEIPT(NotificationChannel.EMAIL, "Transaction Receipt", "notifications"),
+    TRANSACTION_RECEIPT(NotificationChannel.EMAIL, "Transaction Receipt",
+            EmailAccountCategory.NOTIFICATIONS),
 
     /** Transaction alert delivered via SMS */
     SMS_TRANSACTION_ALERT(NotificationChannel.SMS, "Transaction Alert", null),
@@ -43,10 +52,12 @@ public enum NotificationType {
     /* ===================== SUBSCRIPTIONS & PROMOS ===================== */
 
     /** Subscription expiration warning */
-    SUBSCRIPTION_EXPIRING(NotificationChannel.EMAIL, "Subscription Expiring", "notifications"),
+    SUBSCRIPTION_EXPIRING(NotificationChannel.EMAIL, "Subscription Expiring",
+            EmailAccountCategory.NOTIFICATIONS),
 
     /** Promotional or marketing offer via email */
-    PROMOTIONAL_OFFER(NotificationChannel.EMAIL, "Promotional Offer", "marketing"),
+    PROMOTIONAL_OFFER(NotificationChannel.EMAIL, "Promotional Offer",
+            EmailAccountCategory.MARKETING),
 
     /** Promotional offer delivered via SMS */
     SMS_PROMOTIONAL_OFFER(NotificationChannel.SMS, "Promotional Offer", null),
@@ -57,7 +68,8 @@ public enum NotificationType {
     /* ===================== SPORTS & BETTING ===================== */
 
     /** Notification when match tickets become available */
-    MATCH_TICKET_AVAILABLE(NotificationChannel.EMAIL, "Match Ticket Available", "marketing"),
+    MATCH_TICKET_AVAILABLE(NotificationChannel.EMAIL, "Match Ticket Available",
+            EmailAccountCategory.MARKETING),
 
     /** Match reminder sent via SMS */
     SMS_MATCH_REMINDER(NotificationChannel.SMS, "Match Reminder", null),
@@ -79,35 +91,44 @@ public enum NotificationType {
     /* ===================== KYC – USER ===================== */
 
     /** KYC documents successfully submitted */
-    KYC_SUBMITTED(NotificationChannel.EMAIL, "KYC Submitted", "notifications"),
+    KYC_SUBMITTED(NotificationChannel.EMAIL, "KYC Submitted",
+            EmailAccountCategory.NOTIFICATIONS),
 
     /** KYC verification approved */
-    KYC_APPROVED(NotificationChannel.EMAIL, "KYC Approved", "notifications"),
+    KYC_APPROVED(NotificationChannel.EMAIL, "KYC Approved",
+            EmailAccountCategory.NOTIFICATIONS),
 
     /** KYC verification rejected with reason */
-    KYC_REJECTED(NotificationChannel.EMAIL, "KYC Rejected", "notifications"),
+    KYC_REJECTED(NotificationChannel.EMAIL, "KYC Rejected",
+            EmailAccountCategory.NOTIFICATIONS),
 
     /** User must resubmit KYC documents */
-    KYC_RESUBMISSION_REQUIRED(NotificationChannel.EMAIL, "KYC Resubmission Required", "notifications"),
+    KYC_RESUBMISSION_REQUIRED(NotificationChannel.EMAIL, "KYC Resubmission Required",
+            EmailAccountCategory.NOTIFICATIONS),
 
     /** KYC document is nearing expiration */
-    KYC_DOCUMENT_EXPIRING(NotificationChannel.EMAIL, "KYC Document Expiring", "notifications"),
+    KYC_DOCUMENT_EXPIRING(NotificationChannel.EMAIL, "KYC Document Expiring",
+            EmailAccountCategory.NOTIFICATIONS),
 
     /* ===================== KYC – ADMIN / COMPLIANCE ===================== */
 
     /** KYC case requires manual review by compliance */
-    KYC_REVIEW_REQUIRED(NotificationChannel.EMAIL, "KYC Review Required", "support"),
+    KYC_REVIEW_REQUIRED(NotificationChannel.EMAIL, "KYC Review Required",
+            EmailAccountCategory.SUPPORT),
 
     /** Manual KYC verification required */
-    KYC_MANUAL_VERIFICATION(NotificationChannel.EMAIL, "KYC Manual Verification", "support"),
+    KYC_MANUAL_VERIFICATION(NotificationChannel.EMAIL, "KYC Manual Verification",
+            EmailAccountCategory.SUPPORT),
 
     /** SLA breach occurred during KYC processing */
-    KYC_SLA_BREACH(NotificationChannel.EMAIL, "KYC SLA Breach", "support"),
+    KYC_SLA_BREACH(NotificationChannel.EMAIL, "KYC SLA Breach",
+            EmailAccountCategory.SUPPORT),
 
     /* ===================== SYSTEM & MAINTENANCE ===================== */
 
     /** Scheduled system maintenance notification */
-    SYSTEM_MAINTENANCE_SCHEDULED(NotificationChannel.EMAIL, "Scheduled Maintenance", "notifications"),
+    SYSTEM_MAINTENANCE_SCHEDULED(NotificationChannel.EMAIL, "Scheduled Maintenance",
+            EmailAccountCategory.NOTIFICATIONS),
 
     /** System maintenance has started */
     SYSTEM_MAINTENANCE_STARTED(NotificationChannel.PUSH, "Maintenance Started", null),
@@ -123,12 +144,14 @@ public enum NotificationType {
 
     private final NotificationChannel defaultChannel;
     private final String displayName;
-    private final String suggestedEmailAccount; // NEW: Suggested email account name
+    private final EmailAccountCategory emailAccountCategory;
 
-    NotificationType(NotificationChannel defaultChannel, String displayName, String suggestedEmailAccount) {
+    NotificationType(NotificationChannel defaultChannel,
+                     String displayName,
+                     EmailAccountCategory emailAccountCategory) {
         this.defaultChannel = defaultChannel;
         this.displayName = displayName;
-        this.suggestedEmailAccount = suggestedEmailAccount;
+        this.emailAccountCategory = emailAccountCategory;
     }
 
     public NotificationChannel getDefaultChannel() {
@@ -140,19 +163,23 @@ public enum NotificationType {
     }
 
     /**
-     * Gets the suggested email account name for this notification type.
-     * Returns null for non-email notifications or if no specific account is suggested.
+     * Returns the email account category used to resolve
+     * the sender identity for email notifications.
      *
-     * @return suggested email account name (e.g., "marketing", "support", "notifications") or null
+     * @return email account category or {@code null} for non-email notifications
      */
-    public String getSuggestedEmailAccount() {
-        return suggestedEmailAccount;
+    public EmailAccountCategory getEmailAccountCategory() {
+        return emailAccountCategory;
     }
 
     /**
-     * Checks if this notification type has a suggested email account
+     * Indicates whether this notification type requires
+     * an email sender category.
+     *
+     * @return true if email-based and category is defined
      */
-    public boolean hasSuggestedEmailAccount() {
-        return suggestedEmailAccount != null && !suggestedEmailAccount.isBlank();
+    public boolean usesEmailAccountCategory() {
+        return defaultChannel == NotificationChannel.EMAIL
+                && emailAccountCategory != null;
     }
 }
