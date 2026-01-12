@@ -1,0 +1,7 @@
+org.deepdrimz.drimzsport.notification.sdk.client
+org.deepdrimz.drimzsport.notification.sdk.examples
+org.deepdrimz.drimzsport.notification.sdk.exception
+org.deepdrimz.drimzsport.notification.sdk.model.enums
+org.deepdrimz.drimzsport.notification.sdk.model.request
+org.deepdrimz.drimzsport.notification.sdk.model.response
+org.deepdrimz.drimzsport.notification.sdk.validator
