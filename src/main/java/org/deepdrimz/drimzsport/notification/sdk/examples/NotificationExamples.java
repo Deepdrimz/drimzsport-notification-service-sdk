@@ -1261,7 +1261,6 @@ public class NotificationExamples {
                 .scheduledAt(null) // Send immediately
                 .ccRecipients(List.of("vip-support@drimzsport.com"))
                 .bccRecipients(List.of("vip-analytics@drimzsport.com", "retention@drimzsport.com"))
-                .emailAccountName("marketing") // Explicit account selection
                 .build();
 
         NotificationResponse customResp = client.sendNotification(customEmail);
