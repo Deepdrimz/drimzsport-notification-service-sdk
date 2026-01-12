@@ -239,13 +239,12 @@ public class NotificationServiceClient {
                                               String subject, String templateId,
                                               Map<String, Object> variables) {
         SendNotificationRequest request = SendNotificationRequest.builder()
-                .type(NotificationType.EMAIL_VERIFICATION) // Generic type
+                .type(NotificationType.EMAIL_VERIFICATION)
                 .channel(NotificationChannel.EMAIL)
                 .recipient(recipient)
                 .subject(subject)
                 .templateId(templateId)
                 .templateVariables(variables)
-                .emailAccountName(emailAccountName) // NEW: Specify account by name
                 .priority(NotificationPriority.NORMAL)
                 .build();
 
