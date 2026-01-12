@@ -25,53 +25,93 @@ jobs:
           distribution: 'temurin'
           cache: 'maven'
 
-      - name: Build with Maven (skip tests)
+      - name: Build with Maven
         run: mvn -B clean compile -DskipTests
 
-      - name: Generate Javadoc
-        run: mvn -B javadoc:javadoc -DskipTests
-
-      - name: Package (skip tests)
+      - name: Package
         run: mvn -B package -DskipTests
-
-      - name: Upload Javadoc as artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: javadoc
-          path: target/site/apidocs/
-          if-no-files-found: warn
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
           name: build-artifacts
-          path: target/*.jar
+          path: |
+            target/*.jar
+            !target/*sources.jar
+            !target/*javadoc.jar
 
-  deploy-docs:
+  generate-docs:
     runs-on: ubuntu-latest
     needs: build
-    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Set up JDK 21
+      - name: Set up JDK
         uses: actions/setup-java@v4
         with:
           java-version: '21'
           distribution: 'temurin'
 
-      - name: Generate Javadoc
-        run: mvn -B javadoc:javadoc -DskipTests
+      - name: Install Maven
+        run: sudo apt-get update && sudo apt-get install -y maven
 
-      - name: Deploy to GitHub Pages
-        uses: peaceiris/actions-gh-pages@v3
+      - name: Generate Javadocs
+        run: mvn javadoc:javadoc
+
+      - name: Upload Javadocs
+        uses: actions/upload-artifact@v4
         with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./target/site/apidocs
-          destination_dir: ./docs
-          keep_files: false
+          name: javadocs
+          path: target/site/apidocs/
+
+  deploy-docs:
+    runs-on: ubuntu-latest
+    needs: generate-docs
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure Git
+        run: |
+          git config --global user.name "GitHub Actions"
+          git config --global user.email "actions@github.com"
+
+      - name: Setup gh-pages branch
+        run: |
+          # Check if the gh-pages branch exists
+          if git ls-remote --exit-code --heads origin gh-pages; then
+            # If the branch exists, create a new orphan branch temporarily
+            git checkout --orphan temp-gh-pages
+            git rm -rf .
+          else
+            # If the branch does not exist, create it as an orphan branch
+            git checkout --orphan gh-pages
+            git rm -rf .
+          fi
+
+      - name: Download Javadocs
+        uses: actions/download-artifact@v4
+        with:
+          name: javadocs
+          path: .
+
+      - name: Commit and push to gh-pages
+        run: |
+          git add .
+          git commit -m "Deploy Javadocs for ${{ github.sha }}" || echo "No changes to commit"
+
+          if git ls-remote --exit-code --heads origin gh-pages; then
+            git push --force origin HEAD:gh-pages
+          else
+            git push origin HEAD:gh-pages
+          fi
 
   deploy-package:
     runs-on: ubuntu-latest
@@ -95,8 +135,8 @@ jobs:
 
       - name: Configure Maven for GitHub Packages
         run: |
-          mkdir -p ~/.m2
-          cat > ~/.m2/settings.xml <<EOF
+          # Create settings.xml with repository URL
+          cat > ~/.m2/settings.xml << EOF
           <settings>
             <servers>
               <server>
@@ -108,15 +148,21 @@ jobs:
           </settings>
           EOF
 
-      - name: Publish to GitHub Packages (skip tests)
+      - name: Update distribution URL in pom.xml (optional)
+        run: |
+          # If you want to dynamically set the repository URL, you can use sed
+          # But it's better to hardcode it in pom.xml for simplicity
+          echo "Using repository URL from pom.xml"
+
+      - name: Publish to GitHub Packages
         run: mvn -B deploy -DskipTests
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+  # ADDED NOTIFICATION JOB HERE
   notify:
-    name: Notify (Telegram)
     runs-on: ubuntu-latest
-    needs: [build, deploy-package, deploy-docs]
+    needs: [build, generate-docs, deploy-docs, deploy-package]
     if: always()
 
     steps:
@@ -125,20 +171,23 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           BUILD_RESULT: ${{ needs.build.result }}
-          DEPLOY_PKG_RESULT: ${{ needs.deploy-package.result }}
+          GENERATE_DOCS_RESULT: ${{ needs.generate-docs.result }}
           DEPLOY_DOCS_RESULT: ${{ needs.deploy-docs.result }}
+          DEPLOY_PACKAGE_RESULT: ${{ needs.deploy-package.result }}
         run: |
           # Determine overall status
           STATUS="🚀 SUCCESS"
           if [ "$BUILD_RESULT" != "success" ] || \
-             { [ "$DEPLOY_PKG_RESULT" != "success" ] && [ "$DEPLOY_PKG_RESULT" != "skipped" ]; } || \
-             { [ "$DEPLOY_DOCS_RESULT" != "success" ] && [ "$DEPLOY_DOCS_RESULT" != "skipped" ]; }; then
+             { [ "$GENERATE_DOCS_RESULT" != "success" ] && [ "$GENERATE_DOCS_RESULT" != "skipped" ]; } || \
+             { [ "$DEPLOY_DOCS_RESULT" != "success" ] && [ "$DEPLOY_DOCS_RESULT" != "skipped" ]; } || \
+             { [ "$DEPLOY_PACKAGE_RESULT" != "success" ] && [ "$DEPLOY_PACKAGE_RESULT" != "skipped" ]; }; then
             STATUS="🚨 FAILURE"
           fi
           
           # Compose message
-          MESSAGE="${STATUS} - CI Pipeline%0ARepository: ${GITHUB_REPOSITORY}%0AWorkflow: ${GITHUB_WORKFLOW}%0ABranch: ${GITHUB_REF_NAME}%0ARun: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}%0A%0A📦 Build: ${BUILD_RESULT}%0A📚 Docs: ${DEPLOY_DOCS_RESULT}%0A🚀 Package: ${DEPLOY_PKG_RESULT}%0A👤 Actor: ${GITHUB_ACTOR}"
+          MESSAGE="${STATUS} - CI/CD Pipeline%0A📦 Repository: ${GITHUB_REPOSITORY}%0A⚙️ Workflow: ${GITHUB_WORKFLOW}%0A🌿 Branch: ${GITHUB_REF_NAME}%0A🔗 Run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}%0A%0A📋 Results:%0A✅ Build: ${BUILD_RESULT}%0A📚 Docs Generation: ${GENERATE_DOCS_RESULT}%0A🚀 Docs Deployment: ${DEPLOY_DOCS_RESULT}%0A📦 Package Deployment: ${DEPLOY_PACKAGE_RESULT}%0A👤 Actor: ${GITHUB_ACTOR}"
           
+          # Send notification
           curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
             -d chat_id="${TELEGRAM_CHAT_ID}" \
             -d text="$MESSAGE"
